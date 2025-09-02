@@ -23,6 +23,7 @@ import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 
 import EpisodeSelector from '@/components/EpisodeSelector';
 import PageLayout from '@/components/PageLayout';
+import SkipController, { SkipSettingsButton } from '@/components/SkipController';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
@@ -162,6 +163,13 @@ function PlayPageClient() {
   // 播放进度保存相关
   const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastSaveTimeRef = useRef<number>(0);
+
+  // 播放器时间状态（用于跳过功能）
+  const [currentPlayTime, setCurrentPlayTime] = useState<number>(0);
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+
+  // 跳过设置状态
+  const [isSkipSettingMode, setIsSkipSettingMode] = useState<boolean>(false);
 
   const artPlayerRef = useRef<any>(null);
   const artRef = useRef<HTMLDivElement | null>(null);
@@ -1200,10 +1208,25 @@ function PlayPageClient() {
       // 监听播放器事件
       artPlayerRef.current.on('ready', () => {
         setError(null);
+        // 更新视频时长
+        const duration = artPlayerRef.current.duration || 0;
+        setVideoDuration(duration);
       });
 
       artPlayerRef.current.on('video:volumechange', () => {
         lastVolumeRef.current = artPlayerRef.current.volume;
+      });
+
+      // 监听播放时间更新（用于跳过功能）
+      artPlayerRef.current.on('video:timeupdate', () => {
+        const currentTime = artPlayerRef.current.currentTime || 0;
+        setCurrentPlayTime(currentTime);
+        
+        // 同时更新时长（防止ready事件中获取不到）
+        const duration = artPlayerRef.current.duration || 0;
+        if (duration > 0 && videoDuration !== duration) {
+          setVideoDuration(duration);
+        }
       });
 
       // 监听视频可播放事件，这时恢复播放进度更可靠
@@ -1458,8 +1481,8 @@ function PlayPageClient() {
   return (
     <PageLayout activePath='/play'>
       <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20'>
-        {/* 第一行：影片标题 */}
-        <div className='py-1'>
+        {/* 第一行：影片标题和操作按钮 */}
+        <div className='py-1 flex items-center justify-between'>
           <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>
             {videoTitle || '影片标题'}
             {totalEpisodes > 1 && (
@@ -1468,6 +1491,11 @@ function PlayPageClient() {
               </span>
             )}
           </h1>
+          
+          {/* 跳过设置按钮 */}
+          {currentSource && currentId && (
+            <SkipSettingsButton onClick={() => setIsSkipSettingMode(true)} />
+          )}
         </div>
         {/* 第二行：播放器和选集 */}
         <div className='space-y-2'>
@@ -1530,6 +1558,20 @@ function PlayPageClient() {
                   ref={artRef}
                   className='bg-black w-full h-full rounded-xl overflow-hidden shadow-lg'
                 ></div>
+
+                {/* 跳过片头片尾控制器 */}
+                {currentSource && currentId && videoTitle && (
+                  <SkipController
+                    source={currentSource}
+                    id={currentId}
+                    title={videoTitle}
+                    artPlayerRef={artPlayerRef}
+                    currentTime={currentPlayTime}
+                    _duration={videoDuration}
+                    isSettingMode={isSkipSettingMode}
+                    onSettingModeChange={setIsSkipSettingMode}
+                  />
+                )}
 
                 {/* 换源加载蒙层 */}
                 {isVideoLoading && (
