@@ -46,12 +46,29 @@ export async function GET(request: Request) {
       shouldFilterAdult = userSettings?.filter_adult_content !== false;
     }
 
-    // 获取常规资源站
-    const regularSites = await getAvailableApiSites(true); // 总是过滤成人内容
-    const regularSearchPromises = regularSites.map((site) => searchFromApi(site, query));
-    const regularResults = (await Promise.all(regularSearchPromises)).flat();
+      // 获取所有可用的API站点（不包含成人内容）
+  const regularSites = await getAvailableApiSites();
+  
+  if (!regularSites || regularSites.length === 0) {
+    const cacheTime = await getCacheTime();
+    const response = NextResponse.json({ 
+      regular_results: [], 
+      adult_results: [] 
+    }, {
+      headers: {
+        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+      },
+    });
+    return addCorsHeaders(response);
+  }
 
-    let adultResults: unknown[] = [];
+  // 搜索常规（非成人）内容
+  const regularSearchPromises = regularSites.map((site) => searchFromApi(site, query));
+  const regularResults = (await Promise.all(regularSearchPromises)).flat();
+
+  let adultResults: unknown[] = [];
     
     // 如果用户设置允许且明确请求包含成人内容，则搜索成人资源站
     if (!shouldFilterAdult && includeAdult) {
